@@ -53,7 +53,7 @@ export default function Connections({ net, mentions, onFollow }) {
 
       {net.in.length > 0 && (
         <div>
-          <span style={label}>← Menzionato da</span>
+          <span style={label}>← Menzionato in</span>
           <div style={chipRow}>
             {net.in.map((idx) => (
               <Chip key={idx} idx={idx} mentions={mentions} onFollow={onFollow} />
