@@ -19,16 +19,19 @@ wider network: who it names **and** who names it, plus one hop further.
 
 ## Goal
 
-For every mention, surface:
+For every mention, surface its **direct bidirectional** connections:
 
 1. **Direct outgoing** — mentions this one names (`menziona →`). Unchanged basis.
 2. **Direct incoming** — mentions that name this one (`menzionato da ←`). New.
-3. **Second-degree** — distinct mentions reachable through a direct neighbour
-   (`a due passi`), each tagged with the intermediary (`via …`), collapsed by
-   default and capped.
 
 No data-format changes. Same accent-insensitive string matching as today, just
-made bidirectional and extended one hop.
+made bidirectional.
+
+> **Scope note (revised):** an earlier draft of this spec also included a
+> second-degree ("a due passi") tier. It was implemented and reviewed but cut
+> as too noisy — through hub mentions (e.g. Sartre, named by ~30/33) almost the
+> whole article is reachable at two hops, which buried the meaningful direct
+> edges. We keep only the direct bidirectional links.
 
 ## Data layer — `mention-links.js`
 
@@ -39,9 +42,8 @@ Add `buildNetwork(mentions)` returning, per **original** mention index:
 
 ```
 {
-  out:    number[],                       // outgoing (= buildLinks[i])
-  in:     number[],                       // incoming, minus any already in `out`
-  second: Array<{ idx: number, via: number[] }>  // 2-hop, via sorted by rank
+  out: number[],   // outgoing (= buildLinks[i])
+  in:  number[],   // incoming, minus any already in `out`
 }
 ```
 
@@ -51,43 +53,19 @@ Algorithm:
 - `incoming[j]` = inverse of `out` (j collects every i whose `out` contains j).
 - `in[i]` = `incoming[i]` filtered to drop indices already in `out[i]` (a mutual
   edge shows once, under "menziona").
-- Direct neighbours of i = `out[i] ∪ in[i]`. Exclusion set for second-degree =
-  direct neighbours ∪ `{i}`.
-- For each direct neighbour `n`, take its direct neighbours
-  (`out[n] ∪ incoming[n]`); any target `t` not in the exclusion set becomes a
-  second-degree entry, accumulating `n` into `t`'s `via` set.
-- `second` = distinct targets, each `via` array sorted by `rilevanza_globale`
-  (best first), and the `second` array itself sorted by the target's
-  `rilevanza_globale` (most relevant first).
-
-Hub mentions (e.g. Sartre, named by ~31/33) are **not** suppressed — their
-second-degree paths are kept but tamed by the cap + collapse in the UI.
-
-## Constant — `mention-constants.js`
-
-`export const SECOND_DEGREE_CAP = 8;` — max second-degree chips shown when the
-tier is expanded; overflow is summarised as `+ altri K`.
 
 ## Presentation — new `Connections.jsx`
 
 Extracted from `MentionRow` to keep each file focused. Props:
-`{ net, mentions, onFollow }`.
+`{ net, mentions, onFollow }`. Renders **Connessioni dirette** — a labelled
+chip row only when non-empty:
 
-- **Connessioni dirette** (render a labelled chip row only when non-empty):
-  - `menziona →` — chips for `net.out`.
-  - `menzionato da ←` — chips for `net.in`.
-- **A due passi** (only when `net.second.length > 0`):
-  - Collapsed toggle button `▸ A due passi ({net.second.length})`
-    (`▾` when open). Local `useState(false)` — purely presentational, resets
-    when the row unmounts.
-  - When open: take the first `SECOND_DEGREE_CAP` entries; group them by their
-    representative intermediary `via[0]`; render each group under a small
-    `via <name>` subheading, chips ordered by rank. If
-    `second.length > SECOND_DEGREE_CAP`, append `+ altri K`.
-- Every chip calls `onFollow(targetOriginalIdx)` → existing expand +
-  smooth-scroll + flash, working across both views and all category groups.
-- Chip colour = target's `TYPE_COLORS`. Second-degree chips get a lighter,
-  muted treatment so the direct tier stays primary.
+- `menziona →` — chips for `net.out`.
+- `← menzionato da` — chips for `net.in`.
+
+Every chip calls `onFollow(targetOriginalIdx)` → existing expand +
+smooth-scroll + flash, working across both views and all category groups. Chip
+colour = target's `TYPE_COLORS`.
 
 ## Wiring — `MentionRow.jsx` and `mention-explorer.jsx`
 
@@ -102,23 +80,32 @@ Extracted from `MentionRow` to keep each file focused. Props:
   `net={network[idx]}` to each `MentionRow`. `follow()`, the article switcher,
   the globale/categoria toggle, and original-index identity are all unchanged.
 
+## Matching precision fix — `variants`
+
+Making edges bidirectional exposed a latent false-positive in il-filo's
+`variants`: it reduced any name to its last capitalised word as a "surname", so
+the ART title "Paradosso… di Sartre" gained the variant `sartre` and matched
+every role text that merely names Sartre (~28 false incoming edges). Fix:
+`variants(name, tipo)` only derives the surname form for person-like types
+(`PER`, `CHR`); other types match on their full name. After the fix Paradosso's
+`menzionato da` is just Cronopio (which quotes the full title), while the
+*person* Sartre keeps its rich incoming set.
+
 ## Out of scope
 
-- No third-degree or full graph view. `follow()` already lets the reader walk
-  the graph hop by hop.
+- No second-degree, third-degree, or full graph view. `follow()` already lets
+  the reader walk the graph hop by hop.
 - No relationship-type inference (author-of, publisher-of). Edges remain
-  name-in-role-text matches; only direction and one extra hop are added.
-- No suppression of hub mentions — handled by cap + collapse instead.
+  name-in-role-text matches; only direction is added.
 
 ## Verification
 
 1. `npm run build` succeeds.
-2. Open the saggio "Paradosso…" (Sartre article): **menzionato da** now lists
-   Cronopio (and other mentions whose role names the saggio).
-3. **A due passi** is collapsed by default; expanding shows grouped `via …`
-   chips, capped at 8 with `+ altri K` overflow.
-4. A second-degree chip and a direct chip both expand + smooth-scroll + flash
-   the target; verify a cross-category jump in "Per categoria" mode.
-5. Mutual edges are not duplicated across `menziona` / `menzionato da`.
+2. Open the saggio "Paradosso…" (Sartre article): **← menzionato da** lists
+   Cronopio (the mention whose role names the saggio by its full title).
+3. Direct rows split cleanly into **menziona →** / **← menzionato da**; mutual
+   edges are not duplicated across the two.
+4. A chip expands + smooth-scrolls + flashes the target; verify a cross-category
+   jump in "Per categoria" mode.
 ```
 

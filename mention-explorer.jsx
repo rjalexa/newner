@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import rawArticles from "./articles.jsonl?raw";
 import { TYPE_LABELS, TYPE_COLORS } from "./mention-constants.js";
-import { buildLinks } from "./mention-links.js";
+import { buildNetwork } from "./mention-links.js";
 import MentionRow from "./MentionRow.jsx";
 
 // --- Data: loaded from articles.jsonl (one JSON object per line). ---
@@ -59,9 +59,9 @@ export default function App() {
 
   const article = ARTICLES[articleIdx];
 
-  // Cross-references, indexed by original mention order so they resolve in
+  // Connection network, indexed by original mention order so it resolves in
   // both views. Original indices keep open/flash/scroll stable across regroups.
-  const links = useMemo(() => (article ? buildLinks(article.mentions) : []), [article]);
+  const network = useMemo(() => (article ? buildNetwork(article.mentions) : []), [article]);
   const indexOf = useMemo(() => {
     const map = new Map();
     if (article) article.mentions.forEach((m, i) => map.set(m, i));
@@ -97,15 +97,24 @@ export default function App() {
       const sorted = [...article.mentions].sort((a, b) => a.rilevanza_globale - b.rilevanza_globale);
       return [{ key: "all", label: null, items: sorted }];
     }
+    // Group by type, ordering the groups by where each type FIRST appears in
+    // the global ranking (not alphabetically): walk mentions in global-rank
+    // order and record each type the first time it shows up.
+    const globalOrder = [...article.mentions].sort((a, b) => a.rilevanza_globale - b.rilevanza_globale);
     const byType = {};
-    for (const m of article.mentions) (byType[m.tipo] ||= []).push(m);
-    return Object.keys(byType)
-      .sort()
-      .map((tipo) => ({
-        key: tipo,
-        label: TYPE_LABELS[tipo] || tipo,
-        items: byType[tipo].sort((a, b) => a.rilevanza_categoria - b.rilevanza_categoria),
-      }));
+    const typeOrder = [];
+    for (const m of globalOrder) {
+      if (!byType[m.tipo]) {
+        byType[m.tipo] = [];
+        typeOrder.push(m.tipo);
+      }
+      byType[m.tipo].push(m);
+    }
+    return typeOrder.map((tipo) => ({
+      key: tipo,
+      label: TYPE_LABELS[tipo] || tipo,
+      items: byType[tipo].sort((a, b) => a.rilevanza_categoria - b.rilevanza_categoria),
+    }));
   }, [article, mode]);
 
   if (!article) {
@@ -226,7 +235,7 @@ export default function App() {
                   rank={mode === "globale" ? m.rilevanza_globale : m.rilevanza_categoria}
                   isOpen={openIdx === idx}
                   isFlash={flashIdx === idx}
-                  refs={links[idx]}
+                  net={network[idx]}
                   mentions={article.mentions}
                   onToggle={toggle}
                   onFollow={follow}

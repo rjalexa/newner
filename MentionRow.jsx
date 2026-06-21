@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { TYPE_COLORS, TYPE_SOFT } from "./mention-constants.js";
 import Role from "./Role.jsx";
+import Connections from "./Connections.jsx";
 
 // A single mention row: a tappable header (rank, type tag, name) and, when
 // open, the descriptor, the original mention (only when it differs), and the
@@ -20,18 +21,6 @@ const meta = {
   marginBottom: 2,
 };
 
-const chipsStyle = { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 };
-
-const chipStyle = {
-  fontSize: 12,
-  background: "#fff",
-  border: "1px solid",
-  borderRadius: 20,
-  padding: "4px 10px",
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
-
 /**
  * @param {object} props
  * @param {object} props.m - The mention.
@@ -39,7 +28,7 @@ const chipStyle = {
  * @param {number} props.rank - Display rank (rilevanza_globale or _categoria).
  * @param {boolean} props.isOpen - Whether the row is expanded.
  * @param {boolean} props.isFlash - Whether to show the brief flash highlight.
- * @param {number[]} props.refs - Original indices this mention references.
+ * @param {{out: number[], in: number[]}} props.net - Connection network for this mention.
  * @param {Array<object>} props.mentions - All mentions (original order).
  * @param {(index: number) => void} props.onToggle - Toggle this row open/closed.
  * @param {(index: number) => void} props.onFollow - Follow a cross-reference.
@@ -51,7 +40,7 @@ export default function MentionRow({
   rank,
   isOpen,
   isFlash,
-  refs,
+  net,
   mentions,
   onToggle,
   onFollow,
@@ -106,27 +95,9 @@ export default function MentionRow({
           )}
           <div>
             <span style={meta}>Ruolo nell'articolo</span>
-            <Role text={m.ruolo_articolo} refs={refs} mentions={mentions} onFollow={onFollow} />
+            <Role text={m.ruolo_articolo} refs={net.out} mentions={mentions} onFollow={onFollow} />
           </div>
-          {refs.length > 0 && (
-            <div style={chipsStyle}>
-              {refs.map((ri) => {
-                const color = TYPE_COLORS[mentions[ri].tipo] || "#57534e";
-                return (
-                  <button
-                    key={ri}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onFollow(ri);
-                    }}
-                    style={{ ...chipStyle, color, borderColor: color }}
-                  >
-                    {mentions[ri].stringa_ricerca} ↗
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <Connections net={net} mentions={mentions} onFollow={onFollow} />
         </div>
       )}
     </div>
