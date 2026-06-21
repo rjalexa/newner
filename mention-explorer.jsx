@@ -1,6 +1,9 @@
-import { useState, useMemo } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { useState, useMemo, useRef, useCallback } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import rawArticles from "./articles.jsonl?raw";
+import { TYPE_LABELS, TYPE_COLORS } from "./mention-constants.js";
+import { buildLinks } from "./mention-links.js";
+import MentionRow from "./MentionRow.jsx";
 
 // --- Data: loaded from articles.jsonl (one JSON object per line). ---
 // Edit that file to add or change articles; the dev server hot-reloads.
@@ -37,81 +40,56 @@ function parseArticles(raw) {
 
 const ARTICLES = parseArticles(rawArticles);
 
-const TYPE_LABELS = { PER: "Persona", LOC: "Luogo", ORG: "Organizzazione", EVT: "Evento", ART: "Opera/Oggetto", CHR: "Personaggio" };
-const TYPE_COLORS = {
-  PER: "#c2410c", LOC: "#0e7490", ORG: "#6d28d9", EVT: "#b45309", ART: "#15803d", CHR: "#be185d",
-};
-
-function MentionRow({ m, rank, score }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ borderBottom: "1px solid #e7e2d6" }}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 12,
-          padding: "12px 4px", background: "none", border: "none", cursor: "pointer",
-          textAlign: "left", fontFamily: "inherit",
-        }}
-      >
-        <span style={{
-          flexShrink: 0, width: 30, textAlign: "right",
-          fontVariantNumeric: "tabular-nums", fontWeight: 700,
-          fontSize: 15, color: "#1c1917",
-        }}>{rank}</span>
-        <span style={{
-          flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
-          textTransform: "uppercase", color: "#fff", background: TYPE_COLORS[m.tipo] || "#57534e",
-          padding: "2px 7px", borderRadius: 3,
-        }}>{m.tipo}</span>
-        <span style={{ flex: 1, fontWeight: 600, fontSize: 15, color: "#1c1917" }}>
-          {m.stringa_ricerca}
-        </span>
-        <span style={{
-          flexShrink: 0, fontVariantNumeric: "tabular-nums", fontSize: 13,
-          color: "#78716c", minWidth: 88, textAlign: "right",
-        }}>
-          salienza: <strong style={{ color: "#1c1917" }}>{score}</strong>
-        </span>
-        {open
-          ? <ChevronDown size={16} color="#a8a29e" />
-          : <ChevronRight size={16} color="#a8a29e" />}
-      </button>
-      {open && (
-        <div style={{ padding: "0 4px 16px 46px", fontSize: 14, lineHeight: 1.55, color: "#44403c" }}>
-          {m.menzione_originale !== m.stringa_ricerca && (
-            <div style={{ marginBottom: 8 }}>
-              <span style={meta}>Menzione</span> “{m.menzione_originale}”
-            </div>
-          )}
-          {m.descrittore && (
-            <div style={{ marginBottom: 8 }}>
-              <span style={meta}>Descrittore</span> {m.descrittore}
-            </div>
-          )}
-          <div>
-            <span style={meta}>Ruolo nell'articolo</span> {m.ruolo_articolo}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const meta = {
-  display: "block", fontSize: 11, fontWeight: 700, letterSpacing: "0.07em",
-  textTransform: "uppercase", color: "#a8a29e", marginBottom: 2,
-};
-
 function titleFromSlug(slug) {
   return slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
+const switcherBtn = {
+  display: "inline-flex", alignItems: "center", justifyContent: "center",
+  width: 34, height: 34, borderRadius: "50%", cursor: "pointer",
+  border: "1px solid #d6d3cb", background: "#fff", fontFamily: "inherit",
+};
+
 export default function App() {
   const [articleIdx, setArticleIdx] = useState(0);
   const [mode, setMode] = useState("globale"); // "globale" | "categoria"
+  const [openIdx, setOpenIdx] = useState(null); // expanded mention (original index)
+  const [flashIdx, setFlashIdx] = useState(null); // briefly highlighted mention
+  const cardRefs = useRef({}); // original index -> DOM node, for scrolling
 
   const article = ARTICLES[articleIdx];
+
+  // Cross-references, indexed by original mention order so they resolve in
+  // both views. Original indices keep open/flash/scroll stable across regroups.
+  const links = useMemo(() => (article ? buildLinks(article.mentions) : []), [article]);
+  const indexOf = useMemo(() => {
+    const map = new Map();
+    if (article) article.mentions.forEach((m, i) => map.set(m, i));
+    return map;
+  }, [article]);
+
+  const selectArticle = useCallback((idx) => {
+    setArticleIdx(idx);
+    setOpenIdx(null);
+    setFlashIdx(null);
+  }, []);
+
+  const changeArticle = useCallback(
+    (delta) => selectArticle((articleIdx + delta + ARTICLES.length) % ARTICLES.length),
+    [articleIdx, selectArticle]
+  );
+
+  const toggle = useCallback((idx) => {
+    setOpenIdx((cur) => (cur === idx ? null : idx));
+  }, []);
+
+  const follow = useCallback((idx) => {
+    setOpenIdx(idx);
+    setFlashIdx(idx);
+    setTimeout(() => setFlashIdx((cur) => (cur === idx ? null : cur)), 1200);
+    const el = cardRefs.current[idx];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
 
   const grouped = useMemo(() => {
     if (!article) return [];
@@ -175,9 +153,35 @@ export default function App() {
         </div>
       </header>
 
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 14,
+        marginBottom: 12,
+      }}>
+        <button
+          onClick={() => changeArticle(-1)}
+          aria-label="Articolo precedente"
+          style={switcherBtn}
+        >
+          <ChevronLeft size={18} color="#44403c" />
+        </button>
+        <span style={{
+          fontSize: 13, fontWeight: 600, color: "#57534e",
+          fontVariantNumeric: "tabular-nums", letterSpacing: "0.02em",
+        }}>
+          Articolo {articleIdx + 1} / {ARTICLES.length}
+        </span>
+        <button
+          onClick={() => changeArticle(1)}
+          aria-label="Articolo successivo"
+          style={switcherBtn}
+        >
+          <ChevronRight size={18} color="#44403c" />
+        </button>
+      </div>
+
       <select
         value={articleIdx}
-        onChange={(e) => setArticleIdx(Number(e.target.value))}
+        onChange={(e) => selectArticle(Number(e.target.value))}
         style={{ marginBottom: 16, padding: "8px 10px", fontSize: 14, borderRadius: 6, border: "1px solid #d6d3cb", background: "#fff", width: "100%" }}
       >
         {ARTICLES.map((a, i) => <option key={a.articleid} value={i}>{titleFromSlug(a.slug)}</option>)}
@@ -212,22 +216,33 @@ export default function App() {
             </h2>
           )}
           <div style={{ background: "#fff", borderRadius: 8, border: "1px solid #e7e2d6", padding: "0 12px" }}>
-            {group.items.map((m, i) => (
-              <MentionRow
-                key={m.stringa_ricerca + i}
-                m={m}
-                rank={mode === "globale" ? m.rilevanza_globale : m.rilevanza_categoria}
-                score={m.salienza_finale.toFixed(2)}
-              />
-            ))}
+            {group.items.map((m) => {
+              const idx = indexOf.get(m);
+              return (
+                <MentionRow
+                  key={idx}
+                  m={m}
+                  index={idx}
+                  rank={mode === "globale" ? m.rilevanza_globale : m.rilevanza_categoria}
+                  isOpen={openIdx === idx}
+                  isFlash={flashIdx === idx}
+                  refs={links[idx]}
+                  mentions={article.mentions}
+                  onToggle={toggle}
+                  onFollow={follow}
+                  cardRef={(el) => { cardRefs.current[idx] = el; }}
+                />
+              );
+            })}
           </div>
         </section>
       ))}
 
       <p style={{ fontSize: 12, color: "#a8a29e", marginTop: 24, lineHeight: 1.5 }}>
-        Tocca una riga per descrittore, menzione originale e ruolo. Il titolo rimanda
-        all'articolo su ilmanifesto.it. Aggiungi righe al file <code>articles.jsonl</code> per
-        esplorare più articoli.
+        Tocca una riga per descrittore, menzione originale e ruolo. Dentro il ruolo, i nomi
+        delle altre menzioni sono collegamenti: toccali — o tocca i riferimenti in fondo — per
+        seguire il filo da una menzione all'altra. Il titolo rimanda all'articolo su
+        ilmanifesto.it; le menzioni sono ordinate per rilevanza.
       </p>
     </div>
   );
