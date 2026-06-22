@@ -50,11 +50,16 @@ const switcherBtn = {
   border: "1px solid #d6d3cb", background: "#fff", fontFamily: "inherit",
 };
 
+const GLOBAL_LIMIT = 5;
+const CATEGORY_LIMIT = 3;
+
 export default function App() {
   const [articleIdx, setArticleIdx] = useState(0);
   const [mode, setMode] = useState("globale"); // "globale" | "categoria"
   const [openIdx, setOpenIdx] = useState(null); // expanded mention (original index)
   const [flashIdx, setFlashIdx] = useState(null); // briefly highlighted mention
+  const [globalExpanded, setGlobalExpanded] = useState(false);
+  const [expandedCategory, setExpandedCategory] = useState(null);
   const cardRefs = useRef({}); // original index -> DOM node, for scrolling
 
   const article = ARTICLES[articleIdx];
@@ -72,6 +77,8 @@ export default function App() {
     setArticleIdx(idx);
     setOpenIdx(null);
     setFlashIdx(null);
+    setGlobalExpanded(false);
+    setExpandedCategory(null);
   }, []);
 
   const changeArticle = useCallback(
@@ -200,7 +207,11 @@ export default function App() {
         {[["globale", "Ranking globale"], ["categoria", "Per categoria"]].map(([val, lbl]) => (
           <button
             key={val}
-            onClick={() => setMode(val)}
+            onClick={() => {
+              setMode(val);
+              setGlobalExpanded(false);
+              setExpandedCategory(null);
+            }}
             style={{
               padding: "7px 16px", border: "none", borderRadius: 6, cursor: "pointer",
               fontSize: 13, fontWeight: 600, fontFamily: "inherit",
@@ -212,40 +223,70 @@ export default function App() {
         ))}
       </div>
 
-      {grouped.map((group) => (
-        <section key={group.key} style={{ marginBottom: group.label ? 22 : 0 }}>
-          {group.label && (
-            <h2 style={{
-              fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
-              color: TYPE_COLORS[group.key] || "#57534e", margin: "0 0 4px",
-              display: "flex", alignItems: "center", gap: 8,
-            }}>
-              {group.label}
-              <span style={{ color: "#a8a29e", fontWeight: 500 }}>({group.items.length})</span>
-            </h2>
-          )}
-          <div style={{ background: "#fff", borderRadius: 8, border: "1px solid #e7e2d6", padding: "0 12px" }}>
-            {group.items.map((m) => {
-              const idx = indexOf.get(m);
-              return (
-                <MentionRow
-                  key={idx}
-                  m={m}
-                  index={idx}
-                  rank={mode === "globale" ? m.rilevanza_globale : m.rilevanza_categoria}
-                  isOpen={openIdx === idx}
-                  isFlash={flashIdx === idx}
-                  net={network[idx]}
-                  mentions={article.mentions}
-                  onToggle={toggle}
-                  onFollow={follow}
-                  cardRef={(el) => { cardRefs.current[idx] = el; }}
-                />
-              );
-            })}
-          </div>
-        </section>
-      ))}
+      {grouped.map((group) => {
+        const isCategoria = !!group.label;
+        const limit = isCategoria ? CATEGORY_LIMIT : GLOBAL_LIMIT;
+        const isExpanded = isCategoria
+          ? expandedCategory === group.key
+          : globalExpanded;
+        const visibleItems = isExpanded ? group.items : group.items.slice(0, limit);
+        const hiddenCount = group.items.length - limit;
+
+        return (
+          <section key={group.key} style={{ marginBottom: isCategoria ? 22 : 0 }}>
+            {group.label && (
+              <h2 style={{
+                fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+                color: TYPE_COLORS[group.key] || "#57534e", margin: "0 0 4px",
+                display: "flex", alignItems: "center", gap: 8,
+              }}>
+                {group.label}
+                <span style={{ color: "#a8a29e", fontWeight: 500 }}>({group.items.length})</span>
+              </h2>
+            )}
+            <div style={{ background: "#fff", borderRadius: 8, border: "1px solid #e7e2d6", padding: "0 12px" }}>
+              {visibleItems.map((m) => {
+                const idx = indexOf.get(m);
+                return (
+                  <MentionRow
+                    key={idx}
+                    m={m}
+                    index={idx}
+                    rank={mode === "globale" ? m.rilevanza_globale : m.rilevanza_categoria}
+                    isOpen={openIdx === idx}
+                    isFlash={flashIdx === idx}
+                    net={network[idx]}
+                    mentions={article.mentions}
+                    onToggle={toggle}
+                    onFollow={follow}
+                    cardRef={(el) => { cardRefs.current[idx] = el; }}
+                  />
+                );
+              })}
+              {((!isExpanded && hiddenCount > 0) || isExpanded) && (
+                <button
+                  onClick={() => {
+                    if (isCategoria) {
+                      setExpandedCategory(isExpanded ? null : group.key);
+                    } else {
+                      setGlobalExpanded((v) => !v);
+                    }
+                  }}
+                  style={{
+                    display: "block", width: "100%", padding: "10px 4px",
+                    border: "none", borderTop: "1px solid #e7e2d6",
+                    background: "none", cursor: "pointer", textAlign: "center",
+                    fontSize: 13, fontWeight: 600, color: "#b45309",
+                    fontFamily: "inherit", letterSpacing: "0.01em",
+                  }}
+                >
+                  {isExpanded ? "Mostra meno ↑" : `Altre ${hiddenCount} menzioni ›`}
+                </button>
+              )}
+            </div>
+          </section>
+        );
+      })}
 
       <p style={{ fontSize: 12, color: "#a8a29e", marginTop: 24, lineHeight: 1.5 }}>
         Tocca una riga per descrittore, menzione originale e ruolo. Dentro il ruolo, i nomi
