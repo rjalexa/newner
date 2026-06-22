@@ -55,7 +55,7 @@ const CATEGORY_LIMIT = 3;
 
 export default function App() {
   const [articleIdx, setArticleIdx] = useState(0);
-  const [mode, setMode] = useState("globale"); // "globale" | "categoria"
+  const [mode, setMode] = useState("categoria"); // "globale" | "categoria"
   const [openIdx, setOpenIdx] = useState(null); // expanded mention (original index)
   const [flashIdx, setFlashIdx] = useState(null); // briefly highlighted mention
   const [globalExpanded, setGlobalExpanded] = useState(false);
@@ -204,7 +204,7 @@ export default function App() {
       </select>
 
       <div style={{ display: "inline-flex", background: "#efece3", borderRadius: 8, padding: 3, marginBottom: 20 }}>
-        {[["globale", "Ranking globale"], ["categoria", "Per categoria"]].map(([val, lbl]) => (
+        {[["categoria", "Per categoria"], ["globale", "Ranking globale"]].map(([val, lbl]) => (
           <button
             key={val}
             onClick={() => {
